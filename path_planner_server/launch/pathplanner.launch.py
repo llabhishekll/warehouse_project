@@ -35,15 +35,6 @@ def generate_launch_description():
         [
             DeclareLaunchArgument(name="use_sim_time", default_value="True"),
             Node(
-                package="nav2_bt_navigator",
-                executable="bt_navigator",
-                name="bt_navigator_node",
-                output="screen",
-                parameters=[
-                    yaml_behv,
-                ],
-            ),
-            Node(
                 package="nav2_planner",
                 executable="planner_server",
                 name="planner_server_node",
@@ -71,6 +62,15 @@ def generate_launch_description():
                 ],
             ),
             Node(
+                package="nav2_bt_navigator",
+                executable="bt_navigator",
+                name="bt_navigator_node",
+                output="screen",
+                parameters=[
+                    yaml_behv,
+                ],
+            ),
+            Node(
                 package="nav2_lifecycle_manager",
                 executable="lifecycle_manager",
                 name="lifecycle_manager_node",
@@ -82,8 +82,8 @@ def generate_launch_description():
                         "node_names": [
                             "planner_server_node",
                             "controller_server_node",
+                            "recoveries_server_node",
                             "bt_navigator_node",
-                            "recoveries_server_node"
                         ]
                     }
                 ],
@@ -98,9 +98,9 @@ def generate_launch_description():
                         "use_sim_time": use_sim_time
                     }
                 ],
-                # arguments=[
-                #     "-d", path_rviz.as_posix(),
-                # ],
+                arguments=[
+                    "-d", path_rviz.as_posix(),
+                ],
             ),
         ]
     )
