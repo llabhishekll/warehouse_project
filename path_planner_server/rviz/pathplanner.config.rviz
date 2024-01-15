@@ -246,7 +246,7 @@ Visualization Manager:
             Value: /plan
           Value: true
       Enabled: true
-      Name: GlobalController
+      Name: GlobalPlanner
     - Class: rviz_common/Group
       Displays:
         - Alpha: 0.699999988079071
@@ -299,7 +299,7 @@ Visualization Manager:
             Value: /local_plan
           Value: true
       Enabled: true
-      Name: LocalController
+      Name: LocalPlanner
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
