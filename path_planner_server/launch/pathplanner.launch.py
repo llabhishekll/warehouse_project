@@ -48,6 +48,9 @@ def generate_launch_description():
                 executable="controller_server",
                 name="controller_server_node",
                 output="screen",
+                remappings=[
+                    ("/cmd_vel", "/robot/cmd_vel"),
+                ],
                 parameters=[
                     yaml_locl,
                 ],
