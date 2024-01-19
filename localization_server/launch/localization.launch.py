@@ -76,19 +76,5 @@ def generate_launch_description():
                     }
                 ],
             ),
-            Node(
-                package="rviz2",
-                executable="rviz2",
-                name="rviz_node",
-                output="screen",
-                parameters=[
-                    {
-                        "use_sim_time": use_sim_time
-                    }
-                ],
-                arguments=[
-                    "-d", path_rviz.as_posix(),
-                ],
-            ),
         ]
     )
