@@ -21,6 +21,7 @@ def generate_launch_description():
     path_glob = path_root / "config" / "planner_server.config.yml"
     path_locl = path_root / "config" / "controller.config.yml"
     path_recv = path_root / "config" / "recovery.config.yml"
+    path_fill = path_root / "config" / "filters.config.yml"
     path_rviz = path_root / "rviz" / "pathplanner.config.rviz"
 
     # config yaml substitutions
@@ -29,6 +30,7 @@ def generate_launch_description():
     yaml_glob = RewrittenYaml(source_file=path_glob.as_posix(), param_rewrites=new_param)
     yaml_locl = RewrittenYaml(source_file=path_locl.as_posix(), param_rewrites=new_param)
     yaml_recv = RewrittenYaml(source_file=path_recv.as_posix(), param_rewrites=new_param)
+    yaml_fill = RewrittenYaml(source_file=path_fill.as_posix(), param_rewrites=new_param)
 
     # return launch
     return LaunchDescription(
@@ -74,6 +76,24 @@ def generate_launch_description():
                 ],
             ),
             Node(
+                package="nav2_map_server",
+                executable="costmap_filter_info_server",
+                name="costmap_filter_info_node",
+                output="screen",
+                parameters=[
+                    yaml_fill,
+                ],
+            ),
+            Node(
+                package="nav2_map_server",
+                executable="map_server",
+                name="filter_mask_node",
+                output="screen",
+                parameters=[
+                    yaml_fill,
+                ],
+            ),
+            Node(
                 package="nav2_lifecycle_manager",
                 executable="lifecycle_manager",
                 name="lifecycle_manager_node",
@@ -87,6 +107,8 @@ def generate_launch_description():
                             "controller_server_node",
                             "recoveries_server_node",
                             "bt_navigator_node",
+                            "costmap_filter_info_node",
+                            "filter_mask_node",
                         ]
                     }
                 ],
