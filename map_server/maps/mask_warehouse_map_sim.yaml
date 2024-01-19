@@ -1,4 +1,4 @@
-image: warehouse_map_sim.pgm
+image: mask_warehouse_map_sim.pgm
 mode: trinary
 resolution: 0.05
 origin: [-0.984, -4.26, 0]
