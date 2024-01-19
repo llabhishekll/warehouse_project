@@ -56,6 +56,7 @@ controller_server_node:
           "RotateToGoal",
           "Oscillation",
           "BaseObstacle",
+          "BaseFootprint",
           "GoalAlign",
           "PathAlign",
           "PathDist",
@@ -81,11 +82,12 @@ local_costmap:
       robot_base_frame: robot_base_footprint
       use_sim_time: True
       rolling_window: true
-      width: 3
-      height: 3
+      width: 2
+      height: 2
       resolution: 0.05
       robot_radius: 0.15
       plugins: ["voxel_layer", "inflation_layer"]
+      filters: ["keepout_filter"]
       static_layer:
         map_subscribe_transient_local: True
       voxel_layer:
@@ -111,5 +113,9 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.35
+        inflation_radius: 0.32
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        enabled: True
+        filter_info_topic: "/costmap_filter_info"
       always_send_full_costmap: True
