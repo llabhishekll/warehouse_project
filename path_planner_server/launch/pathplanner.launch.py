@@ -5,6 +5,8 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch.substitutions import PathJoinSubstitution
+from launch.conditions import IfCondition, UnlessCondition
+
 
 # fix: dynamic substitutions for parameters during runtime
 # https://github.com/ros-planning/navigation2/issues/2117
@@ -87,11 +89,22 @@ def generate_launch_description():
             Node(
                 package="nav2_map_server",
                 executable="map_server",
-                name="filter_mask_node",
+                name="sim_filter_mask_node",
                 output="screen",
                 parameters=[
                     yaml_fill,
                 ],
+                condition=IfCondition(use_sim_time),
+            ),
+            Node(
+                package="nav2_map_server",
+                executable="map_server",
+                name="real_filter_mask_node",
+                output="screen",
+                parameters=[
+                    yaml_fill,
+                ],
+                condition=UnlessCondition(use_sim_time),
             ),
             Node(
                 package="nav2_lifecycle_manager",
@@ -108,10 +121,32 @@ def generate_launch_description():
                             "recoveries_server_node",
                             "bt_navigator_node",
                             "costmap_filter_info_node",
-                            "filter_mask_node",
+                            "sim_filter_mask_node",
                         ]
                     }
                 ],
+                condition=IfCondition(use_sim_time),
+            ),
+            Node(
+                package="nav2_lifecycle_manager",
+                executable="lifecycle_manager",
+                name="lifecycle_manager_node",
+                output="screen",
+                parameters=[
+                    {
+                        "use_sim_time": use_sim_time,
+                        "autostart": True,
+                        "node_names": [
+                            "planner_server_node",
+                            "controller_server_node",
+                            "recoveries_server_node",
+                            "bt_navigator_node",
+                            "costmap_filter_info_node",
+                            "real_filter_mask_node",
+                        ]
+                    }
+                ],
+                condition=UnlessCondition(use_sim_time),
             ),
             Node(
                 package="rviz2",

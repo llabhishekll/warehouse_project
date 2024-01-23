@@ -7,9 +7,16 @@ costmap_filter_info_node:
     base: 0.0
     multiplier: 1.0
 
-filter_mask_node:
+sim_filter_mask_node:
   ros__parameters:
     use_sim_time: true
     frame_id: "map"
     topic_name: "/keepout_filter_mask"
     yaml_filename: "/home/user/ros2_ws/src/warehouse_project/map_server/maps/mask_warehouse_map_sim.yaml"
+
+real_filter_mask_node:
+  ros__parameters:
+    use_sim_time: true
+    frame_id: "map"
+    topic_name: "/keepout_filter_mask"
+    yaml_filename: "/home/user/ros2_ws/src/warehouse_project/map_server/maps/mask_warehouse_map_real.yaml"
