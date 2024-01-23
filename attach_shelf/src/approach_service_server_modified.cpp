@@ -1,4 +1,5 @@
 #include "geometry_msgs/msg/twist.hpp"
+#include "nav_msgs/msg/odometry.hpp"
 #include "rclcpp/logging.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
@@ -8,6 +9,7 @@
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_broadcaster.h"
 #include "tf2_ros/transform_listener.h"
+#include <cmath>
 
 class ApproachService : public rclcpp::Node {
 private:
@@ -17,6 +19,9 @@ private:
   // member variables
   double px;
   double py;
+  double x;
+  double y;
+  double yaw;
 
   // flag variable
   bool is_approachable;
@@ -81,6 +86,23 @@ private:
     }
   }
 
+  void subscriber_odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg) {
+    // reading current position from /odom topic
+    this->x = msg->pose.pose.position.x;
+    this->y = msg->pose.pose.position.y;
+
+    // reading current orientation from /odom topic
+    double x = msg->pose.pose.orientation.x;
+    double y = msg->pose.pose.orientation.y;
+    double z = msg->pose.pose.orientation.z;
+    double w = msg->pose.pose.orientation.w;
+
+    // convert quaternion into euler angles
+    double yaw = std::atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z));
+    // fix: radian to degree conversions
+    this->yaw = (180 / M_PI) * yaw;
+  }
+
   void publish_cart_frame() {
     // required frames parameters
     std::string f_ref = "map";
@@ -112,7 +134,7 @@ private:
     geometry_msgs::msg::TransformStamped map2cart_msg;
     map2cart_msg.header.stamp = map2laser_msg.header.stamp;
     map2cart_msg.header.frame_id = "map";
-    map2cart_msg.child_frame_id = "robot_cart_laser";
+    map2cart_msg.child_frame_id = "cart_frame";
     map2cart_msg.transform.translation.x = map2cart.getOrigin().getX();
     map2cart_msg.transform.translation.y = map2cart.getOrigin().getY();
     map2cart_msg.transform.translation.z = map2cart.getOrigin().getZ();
@@ -128,57 +150,131 @@ private:
   void service_callback(
       const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
       const std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-
     // node feedback
-    RCLCPP_INFO_ONCE(this->get_logger(), "Moving robot towards the cart");
+    RCLCPP_INFO(this->get_logger(), "/approach_shelf received a new request");
 
-    if (this->use_sim_time) {
-      this->timer_tf_broadcaster->reset();
-      // bad fix: halt the process for few seconds
-      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    }
+    //
     (void)request;
+    bool status;
+
+    //
+    if (this->use_sim_time) {
+      status = this->sim_controller();
+    } else {
+      status = this->real_controller();
+    }
+
+    // halt robot motion
+    auto message = geometry_msgs::msg::Twist();
+    message.linear.x = 0.0;
+    message.angular.z = 0.0;
+    this->publisher_cmd_vel->publish(message);
+
+    // set return status
+    response->success = status;
+  }
+
+  bool sim_controller() {
+    // restart the publish_cart_frame timmer
+    this->timer_tf_broadcaster->reset();
+    // bad fix: halt the process for few seconds
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    // publishing velocity to the topic /cmd_vel
+    auto message = geometry_msgs::msg::Twist();
+
+    // required frames parameters
+    std::string f_ref = "robot_base_footprint";
+    std::string f_tar = "cart_frame";
+
+    while (rclcpp::ok()) {
+      if (tf_buffer->canTransform(f_ref, f_tar, tf2::TimePointZero)) {
+        // fetch transformation
+        auto t = tf_buffer->lookupTransform(f_ref, f_tar, tf2::TimePointZero);
+
+        auto x = t.transform.translation.x;
+        auto y = t.transform.translation.y;
+
+        // calculate error
+        auto error_distance = std::sqrt(x * x + y * y);
+        auto error_yaw = std::atan2(y, x);
+
+        // local control structure
+        if (error_distance > 0.10) {
+          message.linear.x = 0.25;
+          message.angular.z = error_yaw / 2;
+        } else {
+          RCLCPP_INFO(this->get_logger(), "error_distance %f", error_distance);
+          break;
+        }
+        // publish velocity
+        this->publisher_cmd_vel->publish(message);
+
+        // node feedback
+        RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                             "(distance : %f, angle : %f)", error_distance,
+                             error_yaw);
+      } else {
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                             "Requested transform not found");
+      }
+    }
+    this->timer_tf_broadcaster->cancel();
+    return true;
+  }
+
+  bool real_controller() {
+    // publishing velocity to the topic /cmd_vel
+    auto message = geometry_msgs::msg::Twist();
 
     // required frames parameters
     std::string f_ref = "robot_base_footprint";
     std::string f_tar = "robot_cart_laser";
 
-    // publishing velocity to the topic /cmd_vel
-    auto message = geometry_msgs::msg::Twist();
+    double last_error_distance = 0.0;
+    bool loop_once_done = false;
 
     while (rclcpp::ok()) {
-      // fetch transformation
-      geometry_msgs::msg::TransformStamped t;
-      try {
-        t = tf_buffer->lookupTransform(f_ref, f_tar, tf2::TimePointZero);
-      } catch (const tf2::TransformException &ex) {
+      if (tf_buffer->canTransform(f_ref, f_tar, tf2::TimePointZero)) {
+        // fetch transformation
+        auto t = tf_buffer->lookupTransform(f_ref, f_tar, tf2::TimePointZero);
+
+        auto x = t.transform.translation.x;
+        auto y = t.transform.translation.y;
+
+        // calculate error
+        auto error_distance = std::sqrt(x * x + y * y);
+        auto error_yaw = std::atan2(y, x);
+
+        RCLCPP_INFO_ONCE(this->get_logger(), "Target : %f", error_distance);
+
+        // local control structure
+        if ((error_distance > 0.48) || (error_distance < last_error_distance)) {
+          message.linear.x = 0.1;
+          message.angular.z = error_yaw / 2;
+          last_error_distance = error_distance;
+        } else {
+          RCLCPP_INFO(this->get_logger(), "error_distance %f", error_distance);
+          break;
+        }
+        loop_once_done = true;
+
         // node feedback
-        RCLCPP_WARN(get_logger(), "Requested transform not found: %s",
-                    ex.what());
-        return;
-      }
+        RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                             "(distance : %f, angle : %f)", error_distance,
+                             error_yaw);
 
-      auto x = t.transform.translation.x;
-      auto y = t.transform.translation.y;
-
-      // calculate error
-      auto error_distance = std::sqrt(x * x + y * y);
-      auto error_yaw = std::atan2(y, x);
-
-      // local control structure
-      if (error_distance > 0.25) {
-        message.linear.x = 0.1;
-        message.angular.z = error_yaw / 2;
+        // publish velocity
+        this->publisher_cmd_vel->publish(message);
       } else {
-        // node feedback
-        RCLCPP_INFO_ONCE(this->get_logger(), "Robot reached %f",
-                         error_distance);
-        break;
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1200,
+                             "Requested transform not found");
+        if (loop_once_done) {
+          break;
+        }
       }
-      // publish velocity
-      this->publisher_cmd_vel->publish(message);
     }
-    response->success = true;
+    return true;
   }
 
 public:

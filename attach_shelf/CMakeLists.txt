@@ -8,6 +8,7 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
@@ -17,7 +18,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 
 # build
 add_executable(approach_service_node src/approach_service_server_modified.cpp)
-ament_target_dependencies(approach_service_node rclcpp sensor_msgs geometry_msgs std_srvs tf2 tf2_ros tf2_geometry_msgs)
+ament_target_dependencies(approach_service_node rclcpp nav_msgs sensor_msgs geometry_msgs std_srvs tf2 tf2_ros tf2_geometry_msgs)
 
 # install
 install(TARGETS 
