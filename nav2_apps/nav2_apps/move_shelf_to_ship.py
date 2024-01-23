@@ -39,7 +39,7 @@ class WarehouseBotNode(Node):
         elevator_msg = Empty if self.use_sim_time else String
 
         # ros objects
-        self.subscriber_odom = self.create_subscription(Odometry, "/odom", self.subscriber_odom_callback, 10, callback_group=self.callback_g1,)
+        self.subscriber_odom = self.create_subscription(Odometry, "/odom", self.subscriber_odom_callback, 10, callback_group=self.callback_g1)
         self.service_client = self.create_client(Trigger, "/approach_shelf")
         self.publisher_cmd_vel = self.create_publisher(Twist, "/robot/cmd_vel", 10)
         self.publisher_elevator_up = self.create_publisher(elevator_msg, "/elevator_up", 10)
@@ -56,7 +56,7 @@ class WarehouseBotNode(Node):
         # initialize robot position (global)
         init_position = self._create_pose("init_position")
         self.navigator.setInitialPose(init_position)
-        self.get_logger().info(f"Initial position marked, check rviz")
+        self.get_logger().info(f"Initial position marked, check rviz!")
 
         # wait for Nav2 services
         self.navigator.waitUntilNav2Active(localizer="amcl_node", navigator="bt_navigator_node")
@@ -70,8 +70,11 @@ class WarehouseBotNode(Node):
         self._load_shelf_cart()
 
         # move towards shipping position
+        postload_position = self._create_pose("postload_position")
+        status = self._go_to_next_pose(postload_position)
+
         shipping_position = self._create_pose("shipping_position")
-        status = self._go_to_next_pose_with_retry(shipping_position)
+        status = self._go_to_next_pose(shipping_position)
         self.get_logger().info(f"Reached shipping_position : {status}")
 
         # unload shelf cart from robot
@@ -93,142 +96,169 @@ class WarehouseBotNode(Node):
             self.get_logger().warn(f"waiting for server /approach_shelf : {counter}")
 
         # send request to publish tf
-        request = Trigger.Request()
-        future = self.service_client.call(request=request)
-        status = future.success
-        self.get_logger().info(f"Status /approach_shelf : {status}")
+        future = self.service_client.call(request=Trigger.Request())
+        self.get_logger().info(f"Status /approach_shelf : {future.success}")
 
         # move robot under the shelf
-        if status:
+        if future.success:
             if self.use_sim_time:
-                self._move_robot(direction=1, distance=0.45)
-                self._rotate_robot(direction=1, angle=180)
+                self._rotate_robot_to_angle(angle=90)
+                self._move_robot_by_distance(direction=-1, distance=0.40)
             else:
-                self._move_robot(direction=1, distance=0.2)
-                self._rotate_robot(direction=1, angle=180)
+                # self._rotate_robot_by_angle(direction=1, angle=180)
+                self._rotate_robot_by_time(direction=1, duration=4.40)
+                self._move_robot_by_distance(direction=-1, distance=0.36)
         else:
             return
 
         # load shelf from robot
         message = Empty() if self.use_sim_time else String()
-        for i in range(8):
+        for i in range(5):
             self.publisher_elevator_up.publish(message)
             # it takes time for robot to load shelf
             time.sleep(1)
 
         # cart dimension (0.85 0.8 0.05) radius (0.5836)
-        message = self._polygon_message_rectangle(radius=0.35)
+        message = self._polygon_message_rectangle(half_side=0.40)
         self.publisher_gfootprint.publish(message)
         self.publisher_lfootprint.publish(message)
 
-        # halt thread for few secs
-        time.sleep(1)
-
         # move robot forward
-        self._move_robot(direction=1, distance=0.5)
+        self._move_robot_by_distance(direction=1, distance=0.5) 
 
     def _unload_shelf_cart(self):
         # unload shelf from robot
         message = Empty() if self.use_sim_time else String()
-        for i in range(8):
+        for i in range(5):
             self.publisher_elevator_down.publish(message)
             # it takes time for robot to unload shelf
             time.sleep(1)
 
         # robot dimension radius (0.15)
-        message = self._polygon_message_rectangle(radius=0.15)
+        message = self._polygon_message_rectangle(half_side=0.15)
         self.publisher_gfootprint.publish(message)
         self.publisher_lfootprint.publish(message)
 
-        # halt thread for few secs
-        time.sleep(1)
-
         # move robot forward
-        self._move_robot(direction=1, distance=1.0)
+        self._move_robot_by_distance(direction=1, distance=0.5)
 
-    def _move_robot(self, direction, distance):
+    def _move_robot_by_distance(self, direction, distance):
         # initialize variable
-        current_distance = 0
-        x_, y_ = self.x, self.y
+        traveled_distance = 0
+        x_prime = self.x
+        y_prime = self.y
 
-        # calculate and move
-        while current_distance < distance:
-            # calculate
-            dx, dy = self.x - x_, self.y - y_
-            current_distance += math.sqrt(dx * dx + dy * dy)
-            x_, y_ = self.x, self.y
-            # move
-            self._move(direction * 0.1, 0.0)
-
+        # control logic
+        while(rclpy.ok()):
+            dx = self.x - x_prime
+            dy = self.y - y_prime
+            traveled_distance += math.sqrt(dx * dx + dy * dy)
+            x_prime = self.x
+            y_prime = self.y
+            if traveled_distance < distance:
+                self._move(direction * 0.1, 0.0)
+            else:
+                break
+        self.get_logger().info(f"traveled_distance: {traveled_distance}")
+        
         # halt robot motion
-        self.get_logger().info(f"Moved : {current_distance}")
         self._move(0.0, 0.0)
 
-    def _rotate_robot(self, direction, angle):
-        # initialize variable
-        # delta_yaw = angle - self.yaw
-        current_yaw = 0.0
-        yaw_prime = self.yaw
+    def _rotate_robot_by_time(self, direction, duration):
+        self.get_logger().info(f"start yaw {self.yaw})")
 
-        # calculate and move
-        while current_yaw < angle:
-            # calculate
-            current_yaw += abs(self.yaw - yaw_prime)
-            yaw_prime = self.yaw
-            # move
-            self._move(0.0, direction * 0.5)
-
+        start_time = time.time()
+        while (time.time() - start_time) < duration:
+            self.get_logger().info(f"yaw {self.yaw})", throttle_duration_sec=0.5)
+            self._move(0.0, direction * 0.8)
+        
+        self.get_logger().info(f"end yaw {self.yaw})")
         # halt robot motion
-        self.get_logger().info(f"Rotated : {current_yaw}")
+        self._move(0.0, 0.0)
+
+    def _rotate_robot_by_angle(self, direction, angle):
+        # initialize variable
+        rotate_yaw = 0.0
+        yaw_prime = self.yaw
+        
+        # control logic
+        while(rclpy.ok()):
+            rotate_yaw += abs(self.yaw - yaw_prime)
+            yaw_prime = self.yaw
+            if rotate_yaw < angle:
+                self._move(0.0, direction * 0.5)
+            else:
+                break
+        self.get_logger().info(f"rotate_yaw: {rotate_yaw}")
+        
+        # halt robot motion
+        self._move(0.0, 0.0)
+
+    def _rotate_robot_to_angle(self, angle):
+        # control logic
+        while(rclpy.ok()):
+            error_yaw = angle - self.yaw
+            yaw_vel = 0.5 * (math.pi / 180) * error_yaw
+            if abs(error_yaw) > 0.1:
+                # yaw_vel = yaw_vel if yaw_vel > 0.1 else 0.1 * error_yaw / abs(error_yaw)
+                self._move(0.0, yaw_vel)
+            else:
+                break
+        self.get_logger().info(f"error_yaw: {error_yaw}")
+        
+        # halt robot motion
         self._move(0.0, 0.0)
 
     def _move(self, x, z):
+        # initialize message
         message = Twist()
+        
+        # define linear and angular velocity
         message.linear.x = x
         message.angular.z = z
+        
+        # publish message
         self.publisher_cmd_vel.publish(message)
 
     def _polygon_message_circle(self, radius):
+        # initialize message
         message = Polygon()
+
+        # define points
         for i in range(12):
             theta = i / 12.0 * 2.0 * math.pi
             x = radius * math.cos(theta) + 3.0
             y = radius * math.sin(theta)
             message.points.append(Point32(x=x, y=y))
+        
         return message
 
-    def _polygon_message_rectangle(self, radius):
+    def _polygon_message_rectangle(self, half_side):
+        # initialize message
         message = Polygon()
-        message.points.append(Point32(x=radius, y=radius))
-        message.points.append(Point32(x=-radius, y=radius))
-        message.points.append(Point32(x=-radius, y=-radius))
-        message.points.append(Point32(x=radius, y=-radius))
+        
+        # define points
+        message.points.append(Point32(x=half_side, y=half_side))
+        message.points.append(Point32(x=-half_side, y=half_side))
+        message.points.append(Point32(x=-half_side, y=-half_side))
+        message.points.append(Point32(x=half_side, y=-half_side))
+        
         return message
-
-    def _go_to_next_pose_with_retry(self, position):
-        retry = 3
-        while retry:
-            status = self._go_to_next_pose(position)
-            if not status:
-                self._move_robot(direction=1, distance=0.3)
-                status = self._go_to_next_pose(position)
-                retry -= 1
-            else:
-                break
-        return status
 
     def _go_to_next_pose(self, position):
-        # wait till robot complete its assigned task
+        # send taks to nav2
         self.navigator.goToPose(position)
+
+        # wait till robot complete its assigned task
         while not self.navigator.isTaskComplete():
             feedback = self.navigator.getFeedback()
-            recoveries = feedback.number_of_recoveries
-            if recoveries > 3:
-                self.get_logger().error(f"Task Canceled #{recoveries} recoveries.")
+            if feedback.number_of_recoveries > 5:
+                self.get_logger().error(f"Task Canceled #{feedback.number_of_recoveries} recoveries.")
                 self.navigator.cancelTask()
                 return False
-        # wait for robot to completely stop
-        time.sleep(1)
+            else:
+                self.get_logger().info(f"Time : {feedback.estimated_time_remaining}", once=True)             
+        
         return True
 
     def _create_pose(self, request):
@@ -274,13 +304,15 @@ class WarehouseBotNode(Node):
         if self.use_sim_time:
             return {
                 "init_position": (-0.05, -0.03, 0.0),
-                "loading_position": (5.7, 0.0, -1.57),
+                "loading_position": (5.8, 0.0, -1.57),
+                "postload_position": (5.0, 0.0, 3.14),
                 "shipping_position": (0.85, -3.0, 1.57),
             }
         else:
             return {
                 "init_position": (-0.05, -0.4, 0.0),
-                "loading_position": (4.3, -0.75, -1.57),
+                "loading_position": (4.3, -0.4, -1.57),
+                "postload_position": (2.5, -0.8, 3.14),
                 "shipping_position": (0.25, -3.0, 1.57),
             }
 
@@ -294,8 +326,8 @@ class WarehouseBotNode(Node):
         y = msg.pose.pose.orientation.y
         z = msg.pose.pose.orientation.z
         w = msg.pose.pose.orientation.w
+        
         # convert quaternion into euler angles
-        # as an alternatie tf can also be used.
         yaw = math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
         # fix: radian to degree conversions
         self.yaw = (180 / math.pi) * yaw
