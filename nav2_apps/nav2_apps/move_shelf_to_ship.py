@@ -107,7 +107,7 @@ class WarehouseBotNode(Node):
             else:
                 # self._rotate_robot_by_angle(direction=1, angle=180)
                 self._rotate_robot_by_time(direction=1, duration=4.40)
-                self._move_robot_by_distance(direction=-1, distance=0.36)
+                self._move_robot_by_distance(direction=-1, distance=0.3)
         else:
             return
 
@@ -148,6 +148,7 @@ class WarehouseBotNode(Node):
         x_prime = self.x
         y_prime = self.y
 
+        self.get_logger().info(f"move_robot_by_distance : {direction*distance}")
         # control logic
         while(rclpy.ok()):
             dx = self.x - x_prime
@@ -165,9 +166,11 @@ class WarehouseBotNode(Node):
         self._move(0.0, 0.0)
 
     def _rotate_robot_by_time(self, direction, duration):
-        self.get_logger().info(f"start yaw {self.yaw})")
-
+        # initialize variable
         start_time = time.time()
+
+        self.get_logger().info(f"start yaw {self.yaw})")
+        # control logic
         while (time.time() - start_time) < duration:
             self.get_logger().info(f"yaw {self.yaw})", throttle_duration_sec=0.5)
             self._move(0.0, direction * 0.8)
@@ -181,11 +184,13 @@ class WarehouseBotNode(Node):
         rotate_yaw = 0.0
         yaw_prime = self.yaw
         
+        self.get_logger().info(f"rotate_robot_by_angle : target {angle}")
         # control logic
         while(rclpy.ok()):
             rotate_yaw += abs(self.yaw - yaw_prime)
             yaw_prime = self.yaw
             if rotate_yaw < angle:
+                self.get_logger().info(f"yaw {self.yaw})", throttle_duration_sec=0.5)
                 self._move(0.0, direction * 0.5)
             else:
                 break
@@ -195,13 +200,14 @@ class WarehouseBotNode(Node):
         self._move(0.0, 0.0)
 
     def _rotate_robot_to_angle(self, angle):
+        self.get_logger().info(f"rotate_robot_to_angle : target {angle}")
         # control logic
         while(rclpy.ok()):
             error_yaw = angle - self.yaw
-            yaw_vel = 0.5 * (math.pi / 180) * error_yaw
-            if abs(error_yaw) > 0.1:
-                # yaw_vel = yaw_vel if yaw_vel > 0.1 else 0.1 * error_yaw / abs(error_yaw)
-                self._move(0.0, yaw_vel)
+            yaw_rad = (math.pi / 180) * error_yaw
+            if abs(error_yaw) > 2.5:
+                self.get_logger().info(f"yaw {self.yaw})", throttle_duration_sec=0.5)
+                self._move(0.0, 0.5 * yaw_rad)
             else:
                 break
         self.get_logger().info(f"error_yaw: {error_yaw}")
