@@ -105,9 +105,9 @@ class WarehouseBotNode(Node):
                 self._rotate_robot_to_angle(angle=90)
                 self._move_robot_by_distance(direction=-1, distance=0.40)
             else:
-                # self._rotate_robot_by_angle(direction=1, angle=180)
-                self._rotate_robot_by_time(direction=1, duration=4.40)
-                self._move_robot_by_distance(direction=-1, distance=0.3)
+                self._move_robot_by_distance(direction=1, distance=0.18)
+                self._rotate_robot_by_time(direction=1, duration=4.41)
+                self._move_robot_by_distance(direction=-1, distance=0.20)
         else:
             return
 
