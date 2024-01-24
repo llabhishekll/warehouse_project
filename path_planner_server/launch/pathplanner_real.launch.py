@@ -89,7 +89,7 @@ def generate_launch_description():
             Node(
                 package="nav2_map_server",
                 executable="map_server",
-                name="sim_filter_mask_node",
+                name="real_filter_mask_node",
                 output="screen",
                 parameters=[
                     yaml_fill,
@@ -110,7 +110,7 @@ def generate_launch_description():
                             "recoveries_server_node",
                             "bt_navigator_node",
                             "costmap_filter_info_node",
-                            "sim_filter_mask_node",
+                            "real_filter_mask_node",
                         ]
                     }
                 ],
